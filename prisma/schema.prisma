@@ -1,0 +1,417 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  pending
+  order_confirmed
+  shipped
+  delivered
+  cancelled
+  returned
+}
+
+enum PaymentStatus {
+  pending
+  success
+  failed
+  refunded
+}
+
+enum PaymentMethod {
+  cod
+  online
+}
+
+enum PaymentLogEvent {
+  CREATED
+  VERIFIED
+  SUCCESS
+  FAILED
+  WEBHOOK_RECEIVED
+  WEBHOOK_DUPLICATE
+  WEBHOOK_ERROR
+  USER_CANCELLED
+  PAYMENT_TIMEOUT
+}
+
+enum NotificationType {
+  order_status
+  payment
+  system
+  product_rating
+  general
+}
+
+model Admin {
+  id        Int      @id @default(autoincrement())
+  fullName  String   @map("full_name")
+  email     String   @unique
+  password  String
+  isAdmin   Boolean  @default(true) @map("is_admin")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  passwordResets PasswordReset[]
+  notifications  Notification[]
+
+  @@map("admins")
+}
+
+model Customer {
+  id                 Int      @id @default(autoincrement())
+  email              String?  @unique
+  phone              String?  @unique
+  password           String?
+  fullName           String?  @map("full_name")
+  address            String?
+  dob                String?
+  gender             String?
+  googleId           String?  @unique @map("google_id")
+  loginMethod        String?  @map("login_method")
+  profileImage       String?  @map("profile_image")
+  googleProfileImage String?  @map("google_profile_image")
+  isActive           Boolean  @default(false) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  orders        Order[]
+  feedbacks     Feedback[]
+  favorites     Favorite[]
+  notifications Notification[]
+  stockNotifs   StockNotification[]
+  reservations  ProductReservation[]
+
+  @@map("customers")
+}
+
+model Category {
+  id           Int       @id @default(autoincrement())
+  categoryName String    @unique @map("category_name")
+  description  String?
+  image        String?
+  order        Int       @default(0)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  products     Product[]
+  offers       Offer[]
+
+  @@map("categories")
+}
+
+model Product {
+  id                 Int       @id @default(autoincrement())
+  productName        String    @map("product_name")
+  productDescription String?   @map("product_description")
+  price              Float
+  quantity           String?
+  quantityUnit       String?   @map("quantity_unit")
+  weight             String?
+  colors             Json?
+  categoryId         Int?      @map("category_id")
+  stockQuantity      Int       @default(0) @map("stock_quantity")
+  image              String?
+  averageRating      Float     @default(0) @map("average_rating")
+  isActive           Boolean   @default(true) @map("is_active")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  category          Category?           @relation(fields: [categoryId], references: [id])
+  variants          ProductVariant[]
+  orderItems        OrderItem[]
+  feedbacks         Feedback[]
+  favorites         Favorite[]
+  offers            Offer[]
+  stockNotifs       StockNotification[]
+  reservations      ProductReservation[]
+
+  @@map("products")
+}
+
+model ProductVariant {
+  id                 Int       @id @default(autoincrement())
+  parentId           Int       @map("parent_id")
+  productName        String    @map("product_name")
+  productDescription String?   @map("product_description")
+  price              Float
+  quantity           String?
+  quantityUnit       String?   @map("quantity_unit")
+  weight             String?
+  stockQuantity      Int       @default(0) @map("stock_quantity")
+  image              String?
+  isActive           Boolean   @default(true) @map("is_active")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  parent Product @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@map("product_variants")
+}
+
+model ProductReservation {
+  id          Int      @id @default(autoincrement())
+  customerId  Int      @map("customer_id")
+  productId   Int      @map("product_id")
+  quantity    Int
+  reservedUntil DateTime @map("reserved_until")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_reservations")
+}
+
+model Order {
+  id                    Int           @id @default(autoincrement())
+  orderNumber           String        @unique @map("order_number")
+  customerId            Int?          @map("customer_id")
+  firstName             String?       @map("first_name")
+  lastName              String?       @map("last_name")
+  contactNumber         String?       @map("contact_number")
+  secondaryNumber       String?       @map("secondary_number")
+  preferredCourierService String?     @map("preferred_courier_service")
+  courierName           String?       @map("courier_name")
+  courierNumber         String?       @map("courier_number")
+  paymentMethod         PaymentMethod @default(cod) @map("payment_method")
+  paymentStatus         PaymentStatus @default(pending) @map("payment_status")
+  shippingAddress       String        @map("shipping_address")
+  billingAddress        String?       @map("billing_address")
+  subtotal              Float?        @default(0)
+  tax                   Float?        @default(0)
+  shippingCost          Float?        @default(0) @map("shipping_cost")
+  totalAmount           Float?        @default(0) @map("total_amount")
+  orderStatus           OrderStatus   @default(pending) @map("order_status")
+  isPrinted             Boolean       @default(false) @map("is_printed")
+  razorpayOrderId       String?       @unique @map("razorpay_order_id")
+  razorpayPaymentId     String?       @map("razorpay_payment_id")
+  deliveredAt           DateTime?     @map("delivered_at")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  customer  Customer?   @relation(fields: [customerId], references: [id])
+  items     OrderItem[]
+  payments  Payment[]
+  paymentLogs PaymentLog[]
+  invoice   Invoice?
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        Int   @id @default(autoincrement())
+  orderId   Int   @map("order_id")
+  productId Int   @map("product_id")
+  quantity  Int
+  price     Float
+  tax       Float? @default(0)
+  total     Float
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model Invoice {
+  id            Int      @id @default(autoincrement())
+  orderId       Int      @unique @map("order_id")
+  invoiceNumber String   @unique @map("invoice_number")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("invoices")
+}
+
+model Payment {
+  id               Int      @id @default(autoincrement())
+  orderId          Int?     @map("order_id")
+  razorpayOrderId  String?  @map("razorpay_order_id")
+  razorpayPaymentId String? @map("razorpay_payment_id")
+  razorpaySignature String? @map("razorpay_signature")
+  amount           Float?
+  currency         String?  @default("INR")
+  status           String?  @default("created")
+  method           String?
+  description      String?
+  errorCode        String?  @map("error_code")
+  errorDescription String?  @map("error_description")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
+}
+
+model PaymentLog {
+  id                Int             @id @default(autoincrement())
+  orderId           Int?            @map("order_id")
+  event             PaymentLogEvent
+  razorpayOrderId   String?         @map("razorpay_order_id")
+  razorpayPaymentId String?         @map("razorpay_payment_id")
+  amount            Float?
+  ipAddress         String?         @map("ip_address")
+  notes             String?
+  createdAt         DateTime        @default(now()) @map("created_at")
+
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@map("payment_logs")
+}
+
+model CourierChargeSetting {
+  id            Int     @id @default(autoincrement())
+  state         String?
+  minWeight     Float   @default(0) @map("min_weight")
+  maxWeight     Float   @map("max_weight")
+  courierCharge Float   @map("courier_charge")
+  isDefault     Boolean @default(false) @map("is_default")
+
+  @@map("courier_charge_settings")
+}
+
+model Offer {
+  id               Int      @id @default(autoincrement())
+  categoryId       Int?     @map("category_id")
+  productId        Int?     @map("product_id")
+  offerName        String   @map("offer_name")
+  offerPercentage  Int?     @map("offer_percentage")
+  startDate        DateTime @map("start_date")
+  endDate          DateTime @map("end_date")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  category Category? @relation(fields: [categoryId], references: [id])
+  product  Product?  @relation(fields: [productId], references: [id])
+
+  @@map("offers")
+}
+
+model Feedback {
+  id         Int      @id @default(autoincrement())
+  productId  Int      @map("product_id")
+  customerId Int      @map("customer_id")
+  rating     Int
+  comment    String?
+  isApproved Boolean  @default(false) @map("is_approved")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  product  Product  @relation(fields: [productId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@unique([customerId, productId])
+  @@map("feedback")
+}
+
+model Favorite {
+  id         Int      @id @default(autoincrement())
+  customerId Int      @map("customer_id")
+  productId  Int      @map("product_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@unique([customerId, productId])
+  @@map("favorites")
+}
+
+model Notification {
+  id         Int              @id @default(autoincrement())
+  customerId Int?             @map("customer_id")
+  adminId    Int?             @map("admin_id")
+  orderId    Int?             @map("order_id")
+  productId  Int?             @map("product_id")
+  title      String
+  message    String
+  isRead     Boolean          @default(false) @map("is_read")
+  readAt     DateTime?        @map("read_at")
+  type       NotificationType @default(general)
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+  admin    Admin?    @relation(fields: [adminId], references: [id])
+
+  @@map("notifications")
+}
+
+model StockNotification {
+  id         Int      @id @default(autoincrement())
+  productId  Int      @map("product_id")
+  customerId Int      @map("customer_id")
+  quantity   Int?
+  email      String?
+  isNotified Boolean  @default(false) @map("is_notified")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  product  Product  @relation(fields: [productId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@unique([productId, customerId])
+  @@map("stock_notifications")
+}
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String
+  phone     String
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("contact_messages")
+}
+
+model PasswordReset {
+  id        Int      @id @default(autoincrement())
+  email     String
+  token     String   @unique
+  adminId   Int?     @map("admin_id")
+  isAdmin   Boolean  @default(false) @map("is_admin")
+  expiresAt DateTime @map("expires_at")
+  isUsed    Boolean  @default(false) @map("is_used")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  admin Admin? @relation(fields: [adminId], references: [id])
+
+  @@map("password_resets")
+}
+
+model OtpSession {
+  id         String   @id @default(uuid())
+  email      String?
+  phone      String?
+  otp        String
+  isVerified Boolean  @default(false) @map("is_verified")
+  type       String   @default("register")
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("otp_sessions")
+}
+
+model Setting {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value String
+
+  @@map("settings")
+}
+
+model FrontendAuthLog {
+  id        Int      @id @default(autoincrement())
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("frontend_auth_logs")
+}
